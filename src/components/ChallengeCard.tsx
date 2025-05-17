@@ -120,7 +120,7 @@ const ChallengeCard = ({ challenge, className }: ChallengeCardProps) => {
       
       <CardFooter className="bg-gray-50 border-t p-3">
         <Link 
-          to={`/challenge/${challenge.id}`} 
+          to={`/challenges/${challenge.id}`} 
           className="text-indigo-600 hover:text-indigo-800 text-sm font-medium w-full flex justify-between items-center"
         >
           View Challenge

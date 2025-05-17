@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,12 +11,15 @@ import {
 import { Menu, X, User, LogOut } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/context/AuthContext";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false); // This would come from auth context in a real app
-  const [userRole, setUserRole] = useState("builder"); // This would come from user context in a real app ("builder" or "sponsor")
+  const { user, profile, signOut } = useAuth();
+  const isAuthenticated = !!user;
+  const userRole = profile?.role || "";
   const location = useLocation();
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   
   // Helper to check if a link is active
@@ -30,14 +32,17 @@ const Navbar = () => {
     setIsOpen(!isOpen);
   };
   
-  // For demo purposes only - toggle authentication state
-  const toggleAuth = () => {
-    setIsAuthenticated(!isAuthenticated);
-  };
-  
-  // For demo purposes only - toggle user role
-  const toggleRole = () => {
-    setUserRole(userRole === "builder" ? "sponsor" : "builder");
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      // Clear local storage to remove any cached user data
+      localStorage.removeItem('acceptedChallenges');
+      localStorage.removeItem('createdChallenges');
+      navigate('/login');
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
   };
   
   return (
@@ -57,9 +62,9 @@ const Navbar = () => {
             
             {/* Authentication Actions */}
             {isAuthenticated ? (
-              <UserMenu userRole={userRole} toggleAuth={toggleAuth} toggleRole={toggleRole} />
+              <UserMenu userRole={userRole} handleLogout={handleLogout} />
             ) : (
-              <AuthButtons toggleAuth={toggleAuth} />
+              <AuthButtons />
             )}
           </nav>
           
@@ -91,7 +96,7 @@ const Navbar = () => {
                 <p className="text-sm text-gray-500">Signed in as {userRole}</p>
                 <button 
                   onClick={() => {
-                    toggleAuth();
+                    handleLogout();
                     setIsOpen(false);
                   }}
                   className="flex items-center text-red-600 hover:text-red-800"
@@ -99,21 +104,13 @@ const Navbar = () => {
                   <LogOut className="h-4 w-4 mr-2" />
                   Logout
                 </button>
-                
-                {/* Demo purpose only - toggle role */}
-                <button 
-                  onClick={toggleRole}
-                  className="text-xs text-gray-500 mt-2"
-                >
-                  Demo: Switch to {userRole === "builder" ? "sponsor" : "builder"}
-                </button>
               </div>
             ) : (
               <div className="flex flex-col space-y-2 pt-4 border-t">
                 <Button 
                   variant="default" 
                   onClick={() => {
-                    toggleAuth();
+                    navigate('/login');
                     setIsOpen(false);
                   }}
                 >
@@ -122,7 +119,7 @@ const Navbar = () => {
                 <Button 
                   variant="outline" 
                   onClick={() => {
-                    toggleAuth();
+                    navigate('/signup');
                     setIsOpen(false);
                   }}
                 >
@@ -159,11 +156,9 @@ const NavItems = ({
       navItems.push({ name: "My Dashboard", path: "/builder-dashboard" });
       navItems.push({ name: "My Submissions", path: "/my-submissions" });
     } else if (userRole === "sponsor") {
-      navItems.push({ name: "My Dashboard", path: "/sponsor-dashboard" });
-      navItems.push({ name: "Create Challenge", path: "/create-challenge" });
+      navItems.push({ name: "My Dashboard", path: "/dashboard/sponsor" });
+      navItems.push({ name: "Create Challenge", path: "/dashboard/sponsor/create-challenge" });
     }
-  } else {
-    navItems.push({ name: "Sponsors", path: "/sponsors" });
   }
   
   return (
@@ -208,11 +203,9 @@ const MobileNavItems = ({
       navItems.push({ name: "My Dashboard", path: "/builder-dashboard" });
       navItems.push({ name: "My Submissions", path: "/my-submissions" });
     } else if (userRole === "sponsor") {
-      navItems.push({ name: "My Dashboard", path: "/sponsor-dashboard" });
-      navItems.push({ name: "Create Challenge", path: "/create-challenge" });
+      navItems.push({ name: "My Dashboard", path: "/dashboard/sponsor" });
+      navItems.push({ name: "Create Challenge", path: "/dashboard/sponsor/create-challenge" });
     }
-  } else {
-    navItems.push({ name: "Sponsors", path: "/sponsors" });
   }
   
   return (
@@ -237,46 +230,63 @@ const MobileNavItems = ({
 // User Menu (Dropdown) - For authenticated users
 const UserMenu = ({ 
   userRole,
-  toggleAuth,
-  toggleRole
+  handleLogout
 }: {
   userRole: string;
-  toggleAuth: () => void;
-  toggleRole: () => void;
+  handleLogout: () => void;
 }) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex items-center space-x-1 text-gray-700 hover:text-indigo-600">
-          <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
-            <User className="h-4 w-4 text-indigo-600" />
-          </div>
-        </button>
+        <Button variant="ghost" size="icon" className="rounded-full">
+          <User className="h-5 w-5" />
+        </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <div className="px-2 py-1.5 text-sm font-medium text-gray-500">
-          Signed in as {userRole}
+      <DropdownMenuContent align="end" className="w-56">
+        <div className="px-2 py-1.5">
+          <p className="text-sm font-medium">My Account</p>
+          <p className="text-xs text-muted-foreground">{userRole}</p>
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link to="/profile" className="cursor-pointer">Profile</Link>
+          <Link to="/profile" className="cursor-pointer">
+            Profile Settings
+          </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link to="/settings" className="cursor-pointer">Settings</Link>
-        </DropdownMenuItem>
+        {userRole === "builder" ? (
+          <>
+            <DropdownMenuItem asChild>
+              <Link to="/builder-dashboard" className="cursor-pointer">
+                My Dashboard
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/my-submissions" className="cursor-pointer">
+                My Submissions
+              </Link>
+            </DropdownMenuItem>
+          </>
+        ) : (
+          <>
+            <DropdownMenuItem asChild>
+              <Link to="/dashboard/sponsor" className="cursor-pointer">
+                My Dashboard
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/dashboard/sponsor/create-challenge" className="cursor-pointer">
+                Create Challenge
+              </Link>
+            </DropdownMenuItem>
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem 
-          onClick={toggleAuth}
-          className="text-red-600 cursor-pointer"
+          onClick={handleLogout}
+          className="text-red-600 focus:text-red-600 cursor-pointer"
         >
-          Log out
-        </DropdownMenuItem>
-        
-        {/* Demo purpose only - toggle role */}
-        <DropdownMenuSeparator />
-        <div className="px-2 py-1 text-xs text-gray-400">Demo Controls</div>
-        <DropdownMenuItem onClick={toggleRole} className="text-xs text-gray-500 cursor-pointer">
-          Switch to {userRole === "builder" ? "sponsor" : "builder"}
+          <LogOut className="h-4 w-4 mr-2" />
+          Logout
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -284,20 +294,14 @@ const UserMenu = ({
 };
 
 // Login and Signup Buttons - For guests
-const AuthButtons = ({ toggleAuth }: { toggleAuth: () => void }) => {
+const AuthButtons = () => {
   return (
     <div className="flex items-center space-x-4">
-      <Button 
-        variant="ghost" 
-        onClick={toggleAuth}
-      >
-        Login
+      <Button variant="ghost" asChild>
+        <Link to="/login">Login</Link>
       </Button>
-      <Button 
-        variant="default"
-        onClick={toggleAuth}
-      >
-        Sign Up
+      <Button asChild>
+        <Link to="/signup">Sign Up</Link>
       </Button>
     </div>
   );

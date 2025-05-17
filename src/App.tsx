@@ -3,35 +3,24 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
-import Challenges from "./pages/Challenges";
-import ChallengeDetail from "./pages/ChallengeDetail";
-import Contact from "./pages/Contact";
-import NotFound from "./pages/NotFound";
-import BuilderDashboard from "./pages/BuilderDashboard";
-import MySubmissions from "./pages/MySubmissions";
+import { RouterProvider } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext";
+import { ChallengeProvider } from "./context/ChallengeContext";
+import router from "./routes";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/challenges" element={<Challenges />} />
-          <Route path="/challenge/:challengeId" element={<ChallengeDetail />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/builder-dashboard" element={<BuilderDashboard />} />
-          <Route path="/my-submissions" element={<MySubmissions />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
+    <AuthProvider>
+      <ChallengeProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <RouterProvider router={router} />
+        </TooltipProvider>
+      </ChallengeProvider>
+    </AuthProvider>
   </QueryClientProvider>
 );
 

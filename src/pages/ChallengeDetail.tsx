@@ -1,86 +1,45 @@
 
-import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, Trophy, ChevronLeft, FileText, CheckSquare, Database } from 'lucide-react';
+import { CalendarDays, Trophy, ChevronLeft, FileText, CheckSquare, Database, Check, PlusCircle, ExternalLink, Send } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { useAuth } from "@/context/AuthContext";
+import { useChallenges } from "@/context/ChallengeContext";
+import { toast } from "@/components/ui/use-toast";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
-// Mock data - in a real app this would come from an API
-const challengesData = {
-  "1": {
-    id: "1",
-    title: "Autonomous AI Assistant for Marketing Teams",
-    sponsor: "MarketGenius Inc.",
-    logo: "https://placehold.co/50",
-    description: "Build an AI that can generate marketing copy, analyze campaign performance, and suggest improvements based on data insights. The solution should be able to learn from feedback and adapt its suggestions over time.",
-    deadline: "2025-06-15",
-    status: "active",
-    difficulty: "Intermediate",
-    prize: "$5,000",
-    category: "NLP",
-    requirements: [
-      "Solution must be capable of generating marketing copy for social media, email, and web",
-      "Must include performance analysis tools that provide actionable insights",
-      "Should learn from user feedback to improve future suggestions",
-      "API documentation for integration with existing marketing tools",
-      "Ability to handle multiple marketing channels and campaign types"
-    ],
-    evaluation: [
-      "Quality and relevance of generated content (30%)",
-      "Accuracy of performance analysis (25%)",
-      "Adaptability and learning capabilities (25%)",
-      "API design and integration capabilities (10%)",
-      "User experience and interface design (10%)"
-    ],
-    resources: [
-      { name: "Sample marketing data", link: "#" },
-      { name: "API documentation template", link: "#" },
-      { name: "Evaluation criteria details", link: "#" }
-    ]
-  },
-  "2": {
-    id: "2",
-    title: "Healthcare Diagnostic Image Analysis",
-    sponsor: "MediTech Solutions",
-    logo: "https://placehold.co/50",
-    description: "Develop an algorithm to identify anomalies in medical imaging with high accuracy. The solution should work across X-rays, CT scans, and MRIs to flag potential issues for medical professionals.",
-    deadline: "2025-07-01",
-    status: "active",
-    difficulty: "Advanced",
-    prize: "$8,000",
-    category: "Computer Vision",
-    requirements: [
-      "Support for X-ray, CT scan, and MRI image formats",
-      "Ability to identify and highlight potential anomalies",
-      "False positive rate below industry standard",
-      "Documentation on model architecture and training process",
-      "Interface for medical professionals to review flagged issues"
-    ],
-    evaluation: [
-      "Accuracy of anomaly detection (40%)",
-      "False positive/negative rates (30%)",
-      "Processing speed and efficiency (10%)",
-      "Ease of use for medical professionals (10%)",
-      "Documentation quality (10%)"
-    ],
-    resources: [
-      { name: "Sample anonymized medical images", link: "#" },
-      { name: "Medical imaging standards documentation", link: "#" },
-      { name: "Evaluation metrics details", link: "#" }
-    ]
-  }
-};
+
 
 const ChallengeDetail = () => {
   const { challengeId } = useParams();
-  const [isLoggedIn] = useState(false); // In a real app, this would come from authentication state
-  const [userRole] = useState("guest"); // In a real app, this would come from user profile: "builder", "sponsor", "guest"
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, profile } = useAuth();
+  const { addChallenge, isAccepted, submitChallenge, getSubmissionsForChallenge } = useChallenges();
+  
+  const [submissionLink, setSubmissionLink] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitDialogOpen, setIsSubmitDialogOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('description');
+  
+  // Set active tab if coming from sponsor dashboard with state
+  useEffect(() => {
+    if (location.state && location.state.activeTab) {
+      setActiveTab(location.state.activeTab);
+    }
+  }, [location.state]);
+  
+  const isLoggedIn = !!user;
+  const userRole = profile?.role || "guest";
   
   // Get challenge data based on challengeId
-  const challenge = challengeId ? challengesData[challengeId] : null;
+  const { getChallengeById } = useChallenges();
+  const challenge = challengeId ? getChallengeById(challengeId) : null;
   
   if (!challenge) {
     return (
@@ -111,6 +70,105 @@ const ChallengeDetail = () => {
   
   // Determine if user can submit (builder, logged in, challenge active)
   const canSubmit = isLoggedIn && userRole === "builder" && challenge.status === "active";
+  
+  // Check if the challenge is already accepted
+  const challengeAccepted = isAccepted(challenge.id);
+  
+  // Get submissions for this challenge
+  const challengeSubmissions = challengeId ? getSubmissionsForChallenge(challengeId) : [];
+  
+  // Check if user has already submitted
+  const hasSubmitted = challengeSubmissions.some(submission => submission.userId === user?.id);
+  
+  // Get user's submission if they've submitted
+  const userSubmission = challengeSubmissions.find(submission => submission.userId === user?.id);
+  
+  // Handle accepting a challenge
+  const handleAcceptChallenge = () => {
+    if (!isLoggedIn) {
+      // Redirect to login if not logged in
+      navigate('/login', { state: { from: `/challenges/${challengeId}` } });
+      return;
+    }
+    
+    if (userRole !== "builder") {
+      toast({
+        title: "Only builders can accept challenges",
+        description: "Please sign up as a builder to participate in challenges.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Add the challenge to the accepted challenges
+    addChallenge(challenge);
+    
+    toast({
+      title: "Challenge accepted!",
+      description: "This challenge has been added to your dashboard.",
+      variant: "default"
+    });
+  };
+  
+  // Handle submitting a solution
+  const handleSubmitSolution = () => {
+    if (!isLoggedIn || !user || !profile) {
+      navigate('/login', { state: { from: `/challenges/${challengeId}` } });
+      return;
+    }
+    
+    if (!submissionLink) {
+      toast({
+        title: "Submission link required",
+        description: "Please provide a link to your solution.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Validate URL format
+    try {
+      new URL(submissionLink);
+    } catch (e) {
+      toast({
+        title: "Invalid URL",
+        description: "Please enter a valid URL starting with http:// or https://",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      // Submit the challenge solution
+      submitChallenge(
+        challenge.id,
+        user.id,
+        profile.full_name || user.email || 'Anonymous Builder',
+        submissionLink
+      );
+      
+      toast({
+        title: "Solution submitted successfully!",
+        description: "Your submission has been received and is pending review.",
+        variant: "default"
+      });
+      
+      // Close dialog and reset form
+      setIsSubmitDialogOpen(false);
+      setSubmissionLink('');
+    } catch (error) {
+      console.error('Error submitting solution:', error);
+      toast({
+        title: "Submission failed",
+        description: "There was an error submitting your solution. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
   
   return (
     <div className="flex flex-col min-h-screen">
@@ -184,8 +242,8 @@ const ChallengeDetail = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Left Column: Tabbed Information */}
               <div className="lg:col-span-2">
-                <Tabs defaultValue="description">
-                  <TabsList className="grid w-full grid-cols-3">
+                <Tabs value={activeTab} onValueChange={setActiveTab}>
+                  <TabsList className="grid w-full grid-cols-3 md:grid-cols-4">
                     <TabsTrigger value="description" className="flex items-center gap-1">
                       <FileText className="w-4 h-4" /> Description
                     </TabsTrigger>
@@ -195,6 +253,11 @@ const ChallengeDetail = () => {
                     <TabsTrigger value="resources" className="flex items-center gap-1">
                       <Database className="w-4 h-4" /> Resources
                     </TabsTrigger>
+                    {userRole === "sponsor" && (
+                      <TabsTrigger value="submissions" className="flex items-center gap-1">
+                        <Send className="w-4 h-4" /> Submissions
+                      </TabsTrigger>
+                    )}
                   </TabsList>
                   
                   <TabsContent value="description" className="p-6 bg-white rounded-b-md shadow-sm mt-2">
@@ -247,6 +310,71 @@ const ChallengeDetail = () => {
                       <p className="text-gray-600">No additional resources provided for this challenge.</p>
                     )}
                   </TabsContent>
+                  
+                  {/* Add Submissions tab for sponsors */}
+                  {userRole === "sponsor" && (
+                    <TabsContent value="submissions" className="p-6 bg-white rounded-b-md shadow-sm mt-2">
+                      <h2 className="text-xl font-semibold mb-4">Submissions</h2>
+                      
+                      {challengeSubmissions.length > 0 ? (
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr className="border-b border-gray-200 text-left">
+                                <th className="py-3 px-4 font-medium">Builder</th>
+                                <th className="py-3 px-4 font-medium">Submission Date</th>
+                                <th className="py-3 px-4 font-medium">Status</th>
+                                <th className="py-3 px-4 font-medium">Link</th>
+                                <th className="py-3 px-4 font-medium">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {challengeSubmissions.map((submission) => (
+                                <tr key={submission.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                  <td className="py-3 px-4">{submission.userName}</td>
+                                  <td className="py-3 px-4">{new Date(submission.submissionDate).toLocaleDateString()}</td>
+                                  <td className="py-3 px-4">
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        submission.status === 'approved' ? 'bg-green-50 text-green-700' :
+                                        submission.status === 'rejected' ? 'bg-red-50 text-red-700' :
+                                        'bg-amber-50 text-amber-700'
+                                      }
+                                    >
+                                      {submission.status.charAt(0).toUpperCase() + submission.status.slice(1)}
+                                    </Badge>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <a 
+                                      href={submission.submissionLink} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-indigo-600 hover:text-indigo-800 flex items-center"
+                                    >
+                                      View <ExternalLink className="ml-1 h-3 w-3" />
+                                    </a>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <div className="flex space-x-2">
+                                      <Button size="sm" variant="outline" className="text-green-600 hover:text-green-700 hover:bg-green-50">
+                                        Approve
+                                      </Button>
+                                      <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                                        Reject
+                                      </Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="text-gray-600">No submissions have been received for this challenge yet.</p>
+                      )}
+                    </TabsContent>
+                  )}
                 </Tabs>
               </div>
               
@@ -261,17 +389,112 @@ const ChallengeDetail = () => {
                         Interested in this challenge? Sign up as a Builder or login to submit your solution.
                       </p>
                       <div className="space-y-3">
-                        <Button className="w-full">Sign up as a Builder</Button>
-                        <Button variant="outline" className="w-full">Login</Button>
+                        <Button asChild className="w-full">
+                          <Link to="/signup">Sign up as a Builder</Link>
+                        </Button>
+                        <Button asChild variant="outline" className="w-full">
+                          <Link to="/login">Login</Link>
+                        </Button>
                       </div>
                     </div>
                   ) : userRole === "builder" ? (
                     challenge.status === "active" ? (
                       <div>
-                        <p className="text-gray-700 mb-4">
-                          Ready to showcase your skills? Submit your solution before the deadline.
-                        </p>
-                        <Button size="lg" className="w-full">Submit Your Solution</Button>
+                        {!challengeAccepted ? (
+                          <>
+                            <p className="text-gray-700 mb-4">
+                              Interested in this challenge? Accept it to add to your dashboard.
+                            </p>
+                            <Button 
+                              size="lg" 
+                              className="w-full mb-4"
+                              onClick={handleAcceptChallenge}
+                            >
+                              <PlusCircle className="mr-2 h-4 w-4" /> Accept Challenge
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-center p-2 bg-green-50 text-green-700 rounded-md mb-4">
+                              <Check className="mr-2 h-4 w-4" /> Challenge accepted
+                            </div>
+                            <p className="text-gray-700 mb-4">
+                              {hasSubmitted 
+                                ? "You've already submitted a solution for this challenge." 
+                                : "Ready to showcase your skills? Submit your solution before the deadline."}
+                            </p>
+                            
+                            {hasSubmitted ? (
+                              <div className="space-y-4">
+                                <div className="p-4 bg-gray-50 rounded-md">
+                                  <h4 className="font-medium mb-2">Your submission</h4>
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <Badge className="mb-2">{userSubmission?.status}</Badge>
+                                      <p className="text-sm text-gray-500">
+                                        Submitted on {new Date(userSubmission?.submissionDate || '').toLocaleDateString()}
+                                      </p>
+                                    </div>
+                                    <a 
+                                      href={userSubmission?.submissionLink} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-indigo-600 hover:text-indigo-800 flex items-center"
+                                    >
+                                      View Submission <ExternalLink className="ml-1 h-3 w-3" />
+                                    </a>
+                                  </div>
+                                </div>
+                                <Button variant="outline" size="lg" className="w-full">
+                                  Update Submission
+                                </Button>
+                              </div>
+                            ) : (
+                              <Dialog open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
+                                <DialogTrigger asChild>
+                                  <Button size="lg" className="w-full">
+                                    <Send className="mr-2 h-4 w-4" /> Submit Your Solution
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Submit Your Solution</DialogTitle>
+                                    <DialogDescription>
+                                      Provide a link to your solution. This could be a GitHub repository, a deployed application, or any other relevant link.
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  
+                                  <div className="space-y-4 py-4">
+                                    <div className="space-y-2">
+                                      <label htmlFor="submissionLink" className="text-sm font-medium">
+                                        Submission Link <span className="text-red-500">*</span>
+                                      </label>
+                                      <Input
+                                        id="submissionLink"
+                                        placeholder="https://github.com/yourusername/your-repo"
+                                        value={submissionLink}
+                                        onChange={(e) => setSubmissionLink(e.target.value)}
+                                      />
+                                      <p className="text-sm text-gray-500">
+                                        Make sure your submission is publicly accessible and includes all required deliverables.
+                                      </p>
+                                    </div>
+                                  </div>
+                                  
+                                  <DialogFooter>
+                                    <Button variant="outline" onClick={() => setIsSubmitDialogOpen(false)}>Cancel</Button>
+                                    <Button 
+                                      onClick={handleSubmitSolution} 
+                                      disabled={isSubmitting || !submissionLink}
+                                    >
+                                      {isSubmitting ? "Submitting..." : "Submit Solution"}
+                                    </Button>
+                                  </DialogFooter>
+                                </DialogContent>
+                              </Dialog>
+                            )}
+                          </>
+                        )}
                         <p className="text-sm text-gray-500 mt-2">
                           Deadline: {formatDate(challenge.deadline)}
                         </p>
